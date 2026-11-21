@@ -1,0 +1,255 @@
+{
+ "name": "Overdue Invoice Reminder Sequence",
+ "nodes": [
+  {
+   "id": "17898463-2950-4928-b55a-c2078cc7aa4f",
+   "name": "Setup notes",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -420,
+    -260
+   ],
+   "parameters": {
+    "content": "## Overdue Invoice Reminders\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Google Sheets, Gmail.\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets",
+    "height": 420,
+    "width": 380
+   }
+  },
+  {
+   "id": "5fd2b23a-b7e9-40a9-a708-7b3bfac02c8e",
+   "name": "Schedule",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "0 8 * * 1-5"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "39f7e53d-7b85-4920-b96a-0375cba507e2",
+   "name": "Config",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    240,
+    0
+   ],
+   "parameters": {
+    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"business\": \"Your Business\",\n  \"fromName\": \"Your Name\",\n  \"payLink\": \"\",\n  \"levels\": [\n    3,\n    10,\n    20\n  ]\n} }];"
+   }
+  },
+  {
+   "id": "35b794b2-b7c9-4a82-849e-77a0e1d7b3ff",
+   "name": "Read Invoices",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    480,
+    0
+   ],
+   "parameters": {
+    "options": {},
+    "resource": "sheet",
+    "operation": "read",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Invoices"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": ""
+    }
+   }
+  },
+  {
+   "id": "f3a9b7bf-de7a-4f83-80d9-9beb9b3005e7",
+   "name": "Pick overdue",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    720,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst T = [\n  ['Friendly reminder: invoice {inv} ({amt})', 'Hi {first},\\n\\nA quick reminder that invoice {inv} for {amt} was due on {due}. If it is already on its way, thank you and please ignore this note.{pay}\\n\\nBest,\\n{from}'],\n  ['Invoice {inv} is now {d} days overdue', 'Hi {first},\\n\\nInvoice {inv} for {amt} is now {d} days past due (due {due}). Could you let me know when we can expect payment?{pay}\\n\\nThank you,\\n{from}'],\n  ['Final notice: invoice {inv} ({amt})', 'Hi {first},\\n\\nThis is a final notice for invoice {inv} ({amt}), {d} days overdue. Please arrange payment this week or reply to discuss a plan.{pay}\\n\\nRegards,\\n{from}'],\n];\nconst out = [];\nfor (const it of $input.all()) {\n  const r = it.json; if (/^(yes|y|true|paid)$/i.test(String(r['Paid']||'')) || !r['Email']) continue;\n  const due = parse(r['Due date']); if (!due) continue;\n  const d = days(due, today); const sent = num(r['Reminder level']);\n  let lvl = 0; C.levels.forEach((x, i) => { if (d >= x) lvl = i + 1; });\n  if (lvl === 0 || lvl <= sent) continue;\n  const o = { inv: r['Invoice #'], amt: '$' + num(r['Amount']).toLocaleString('en-US', {minimumFractionDigits: 2}), due: iso(due), d,\n    first: String(r['Client']||'').split(' ')[0] || 'there', from: C.fromName, pay: C.payLink ? `\\n\\nPay online: ${C.payLink}` : '' };\n  out.push({ json: { row_number: r.row_number, level: lvl, email: r['Email'], subject: fill(T[lvl-1][0], o), body: fill(T[lvl-1][1], o) } });\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "055e6518-4af2-40bc-9396-05e22bc7238c",
+   "name": "Send reminder",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.1,
+   "position": [
+    960,
+    0
+   ],
+   "parameters": {
+    "sendTo": "={{ $json.email }}",
+    "subject": "={{ $json.subject }}",
+    "message": "={{ $json.body }}",
+    "options": {
+     "appendAttribution": false
+    },
+    "resource": "message",
+    "emailType": "text",
+    "operation": "send"
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "",
+     "name": ""
+    }
+   }
+  },
+  {
+   "id": "510627a8-ed58-496e-9da7-1d423561642b",
+   "name": "Mark sent",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1200,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Pick overdue').item.json;\nreturn { json: { row_number: p.row_number, 'Reminder level': p.level, 'Last reminder': new Date().toISOString().slice(0,10) } };",
+    "mode": "runOnceForEachItem"
+   }
+  },
+  {
+   "id": "21bd641c-06f6-477c-9cdb-1bd35871ea56",
+   "name": "Update Invoices",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    1440,
+    0
+   ],
+   "parameters": {
+    "columns": {
+     "value": {},
+     "schema": [],
+     "mappingMode": "autoMapInputData",
+     "matchingColumns": [
+      "row_number"
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "options": {},
+    "resource": "sheet",
+    "operation": "update",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Invoices"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": ""
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Schedule": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Read Invoices",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Read Invoices": {
+   "main": [
+    [
+     {
+      "node": "Pick overdue",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Pick overdue": {
+   "main": [
+    [
+     {
+      "node": "Send reminder",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Send reminder": {
+   "main": [
+    [
+     {
+      "node": "Mark sent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark sent": {
+   "main": [
+    [
+     {
+      "node": "Update Invoices",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "pinData": {},
+ "meta": {
+  "templateCredsSetupCompleted": false
+ },
+ "tags": []
+}

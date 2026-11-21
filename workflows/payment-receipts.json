@@ -1,0 +1,255 @@
+{
+ "name": "Payment Received -> Thank-You Receipt",
+ "nodes": [
+  {
+   "id": "1aa33a9a-6ab1-4280-ae18-9b1aab0591a7",
+   "name": "Setup notes",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -420,
+    -260
+   ],
+   "parameters": {
+    "content": "## Payment Receipts\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Google Sheets, Gmail.\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets",
+    "height": 420,
+    "width": 380
+   }
+  },
+  {
+   "id": "7ad1f64c-6aba-4361-b2e4-75515db52883",
+   "name": "Schedule",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "0 * * * *"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "160e933d-9824-40a9-ba9b-5220f71e0bb7",
+   "name": "Config",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    240,
+    0
+   ],
+   "parameters": {
+    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"business\": \"Your Business\",\n  \"fromName\": \"Your Name\"\n} }];"
+   }
+  },
+  {
+   "id": "4d527d12-9fc9-4ffd-8a88-7cacf86c7046",
+   "name": "Read Invoices",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    480,
+    0
+   ],
+   "parameters": {
+    "options": {},
+    "resource": "sheet",
+    "operation": "read",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Invoices"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": ""
+    }
+   }
+  },
+  {
+   "id": "8419bea1-e17d-4e51-9a39-43f1482fc75a",
+   "name": "Paid, no receipt",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    720,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nreturn $input.all().map(i => i.json).filter(r => /^(yes|y|true|paid)$/i.test(String(r['Paid']||'')) && !r['Receipt sent'] && r['Email'])\n  .map(r => { const amt = '$' + num(r['Amount']).toLocaleString('en-US', {minimumFractionDigits: 2}); const pd = parse(r['Paid date']) || today;\n    const html = `<div style=\"font-family:Arial;max-width:520px\"><h2 style=\"margin:0 0 8px\">Payment received - thank you!</h2><p>Hi ${String(r['Client']||'').split(' ')[0] || 'there'}, we received your payment. Here is your receipt:</p><table style=\"border-collapse:collapse;width:100%\"><tr><td style=\"padding:6px;border-bottom:1px solid #e5e7eb\">Invoice</td><td style=\"padding:6px;border-bottom:1px solid #e5e7eb;text-align:right\"><b>${r['Invoice #']}</b></td></tr><tr><td style=\"padding:6px;border-bottom:1px solid #e5e7eb\">Amount paid</td><td style=\"padding:6px;border-bottom:1px solid #e5e7eb;text-align:right\"><b>${amt}</b></td></tr><tr><td style=\"padding:6px\">Date</td><td style=\"padding:6px;text-align:right\">${iso(pd)}</td></tr></table><p>We appreciate your business.<br>${C.fromName} \u00b7 ${C.business}</p></div>`;\n    return { json: { row_number: r.row_number, email: r['Email'], subject: `Receipt for invoice ${r['Invoice #']} - ${C.business}`, html } }; });"
+   }
+  },
+  {
+   "id": "e052faee-f677-48c1-88cb-d69dd742fb65",
+   "name": "Send receipt",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.1,
+   "position": [
+    960,
+    0
+   ],
+   "parameters": {
+    "sendTo": "={{ $json.email }}",
+    "subject": "={{ $json.subject }}",
+    "message": "={{ $json.html }}",
+    "options": {
+     "appendAttribution": false
+    },
+    "resource": "message",
+    "emailType": "html",
+    "operation": "send"
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "",
+     "name": ""
+    }
+   }
+  },
+  {
+   "id": "9414a7ca-b738-4957-970c-51156e9bdc75",
+   "name": "Mark sent",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1200,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Paid, no receipt').item.json;\nreturn { json: { row_number: p.row_number, 'Receipt sent': new Date().toISOString().slice(0,10) } };",
+    "mode": "runOnceForEachItem"
+   }
+  },
+  {
+   "id": "0bcf413f-e827-4cb5-974d-71c280627448",
+   "name": "Update Invoices",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    1440,
+    0
+   ],
+   "parameters": {
+    "columns": {
+     "value": {},
+     "schema": [],
+     "mappingMode": "autoMapInputData",
+     "matchingColumns": [
+      "row_number"
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "options": {},
+    "resource": "sheet",
+    "operation": "update",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Invoices"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": ""
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Schedule": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Read Invoices",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Read Invoices": {
+   "main": [
+    [
+     {
+      "node": "Paid, no receipt",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Paid, no receipt": {
+   "main": [
+    [
+     {
+      "node": "Send receipt",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Send receipt": {
+   "main": [
+    [
+     {
+      "node": "Mark sent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark sent": {
+   "main": [
+    [
+     {
+      "node": "Update Invoices",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "pinData": {},
+ "meta": {
+  "templateCredsSetupCompleted": false
+ },
+ "tags": []
+}

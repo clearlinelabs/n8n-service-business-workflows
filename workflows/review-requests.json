@@ -1,0 +1,283 @@
+{
+ "name": "Google Review Request Autopilot",
+ "nodes": [
+  {
+   "id": "de97eb3d-f43b-455b-8dce-bb29c0686802",
+   "name": "Setup notes",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -420,
+    -260
+   ],
+   "parameters": {
+    "content": "## Review Request Autopilot\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Google Sheets, Gmail (Twilio optional).\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets",
+    "height": 420,
+    "width": 380
+   }
+  },
+  {
+   "id": "6ddac78c-fb39-4bf9-9713-b4748c4df9d3",
+   "name": "Schedule",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "0 * * * *"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "39e72e0c-941d-43b5-83c8-3b4f99b175f7",
+   "name": "Config",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    240,
+    0
+   ],
+   "parameters": {
+    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"twilioNumber\": \"YOUR_TWILIO_NUMBER\",\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"business\": \"Your Business\",\n  \"reviewLink\": \"https://g.page/r/YOUR_REVIEW_LINK\",\n  \"hoursAfterJob\": 2,\n  \"reminderAfterDays\": 3,\n  \"fromName\": \"Your Name\"\n} }];"
+   }
+  },
+  {
+   "id": "9382e79d-708e-4e68-aa0c-bf7c07cecf75",
+   "name": "Read Jobs",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    480,
+    0
+   ],
+   "parameters": {
+    "options": {},
+    "resource": "sheet",
+    "operation": "read",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Jobs"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": ""
+    }
+   }
+  },
+  {
+   "id": "4c2b10a4-7d5f-4a4a-a3a6-2415a2fe42a5",
+   "name": "Pick jobs",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    720,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst out = [];\nfor (const it of $input.all()) {\n  const r = it.json; if (String(r['Status']).toLowerCase() !== 'done' || !r['Email']) continue;\n  const done = parse(r['Completed']); if (!done) continue;\n  const first = (String(r['Customer']||'').split(' ')[0]) || 'there';\n  if (!r['Review sent']) {\n    if ((Date.now() - done) / 36e5 < C.hoursAfterJob) continue;\n    out.push({ json: { row_number: r.row_number, stage: 'Review sent', email: r['Email'], phone: r['Phone'] || '',\n      subject: `Thanks from ${C.business} - quick favor?`,\n      body: `Hi ${first},\\n\\nThank you for choosing ${C.business}. If you were happy with the work, would you leave us a quick Google review? It takes 30 seconds and means a lot to a local business:\\n${C.reviewLink}\\n\\nThank you!\\n${C.fromName}`,\n      sms: `Hi ${first}, thanks for choosing ${C.business}! Would you leave us a quick review? ${C.reviewLink}` } });\n  } else if (!r['Reminder sent'] && days(parse(r['Review sent']) || done, today) >= C.reminderAfterDays) {\n    out.push({ json: { row_number: r.row_number, stage: 'Reminder sent', email: r['Email'], phone: r['Phone'] || '',\n      subject: `Still have 30 seconds, ${first}?`,\n      body: `Hi ${first},\\n\\nJust a friendly reminder - if you have a moment, a short review really helps us:\\n${C.reviewLink}\\n\\nThanks again,\\n${C.fromName}`,\n      sms: `Friendly reminder from ${C.business}: ${C.reviewLink}` } });\n  }\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "e4d52ab2-b74f-4df1-9977-7398db3a048a",
+   "name": "Send email",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.1,
+   "position": [
+    960,
+    0
+   ],
+   "parameters": {
+    "sendTo": "={{ $json.email }}",
+    "subject": "={{ $json.subject }}",
+    "message": "={{ $json.body }}",
+    "options": {
+     "appendAttribution": false
+    },
+    "resource": "message",
+    "emailType": "text",
+    "operation": "send"
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "",
+     "name": ""
+    }
+   }
+  },
+  {
+   "id": "4356617e-5771-47c5-a79e-5b61061b238c",
+   "name": "Send SMS (optional)",
+   "type": "n8n-nodes-base.twilio",
+   "typeVersion": 1,
+   "position": [
+    1200,
+    200
+   ],
+   "parameters": {
+    "to": "={{ $json.phone }}",
+    "from": "={{ $('Config').first().json.twilioNumber }}",
+    "message": "={{ $json.sms }}",
+    "operation": "send"
+   },
+   "disabled": true,
+   "credentials": {
+    "twilioApi": {
+     "id": "",
+     "name": ""
+    }
+   }
+  },
+  {
+   "id": "4085a7a2-7835-4d12-8e41-2321ac59e71d",
+   "name": "Mark sent",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1440,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Pick jobs').item.json;\nreturn { json: { row_number: p.row_number, [p.stage]: new Date().toISOString().slice(0,10) } };",
+    "mode": "runOnceForEachItem"
+   }
+  },
+  {
+   "id": "57644605-d280-4a5e-b341-3f3deff60722",
+   "name": "Update Jobs",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    1680,
+    0
+   ],
+   "parameters": {
+    "columns": {
+     "value": {},
+     "schema": [],
+     "mappingMode": "autoMapInputData",
+     "matchingColumns": [
+      "row_number"
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "options": {},
+    "resource": "sheet",
+    "operation": "update",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Jobs"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": ""
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Schedule": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Read Jobs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Read Jobs": {
+   "main": [
+    [
+     {
+      "node": "Pick jobs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Pick jobs": {
+   "main": [
+    [
+     {
+      "node": "Send email",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Send SMS (optional)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Send email": {
+   "main": [
+    [
+     {
+      "node": "Mark sent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark sent": {
+   "main": [
+    [
+     {
+      "node": "Update Jobs",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "pinData": {},
+ "meta": {
+  "templateCredsSetupCompleted": false
+ },
+ "tags": []
+}
