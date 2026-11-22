@@ -2,7 +2,7 @@
  "name": "Missed Call Text-Back",
  "nodes": [
   {
-   "id": "56f5f670-0b7f-4282-8f80-daa5ca76f3b1",
+   "id": "f8f3bf91-417b-4a2f-b383-cb7bdab26e55",
    "name": "Setup notes",
    "type": "n8n-nodes-base.stickyNote",
    "typeVersion": 1,
@@ -11,13 +11,13 @@
     -260
    ],
    "parameters": {
-    "content": "## Missed Call Text-Back\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Twilio, Google Sheets.\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets\n\nIn Twilio > Phone Numbers > your number > Voice: set the **Call status changes** URL to the **Twilio call status** webhook URL (POST).",
+    "content": "## Missed Call Text-Back\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Twilio, Google Sheets.\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets\n\nIn Twilio > Phone Numbers > your number > Voice: set the **Call status changes** URL to the **Twilio call status** webhook URL (POST).\n\nSet your timezone, open days/hours and quiet hours in **Config**. Repeat calls within `dedupeMinutes` get no second text.",
     "height": 420,
     "width": 380
    }
   },
   {
-   "id": "ed0aeefc-7fff-40c3-a019-f1057fab4d80",
+   "id": "1c7c454c-e80b-4ef7-9ce5-e6a40e0c9aab",
    "name": "Twilio call status",
    "type": "n8n-nodes-base.webhook",
    "typeVersion": 2,
@@ -33,7 +33,7 @@
    }
   },
   {
-   "id": "18bd9a16-c8f1-4076-95c5-b09892d99f26",
+   "id": "5bd92a8f-7393-4ae4-8846-7d4057abcd22",
    "name": "Config",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -42,11 +42,11 @@
     0
    ],
    "parameters": {
-    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"business\": \"Your Business\",\n  \"twilioNumber\": \"+15550000000\",\n  \"text\": \"Hi, this is {business}. Sorry we missed your call! How can we help? Reply here and we'll get right back to you.\"\n} }];"
+    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"business\": \"Your Business\",\n  \"twilioNumber\": \"YOUR_TWILIO_NUMBER\",\n  \"timezone\": \"America/New_York\",\n  \"openDays\": \"Mon,Tue,Wed,Thu,Fri,Sat\",\n  \"openHour\": 7,\n  \"closeHour\": 18,\n  \"quietStart\": 21,\n  \"quietEnd\": 8,\n  \"dedupeMinutes\": 30,\n  \"text\": \"Hi, this is {business}. Sorry we missed your call! How can we help? Reply here and we'll get right back to you.\",\n  \"afterHoursText\": \"Hi, this is {business}. Thanks for calling! We're closed right now, but we'll call you back first thing when we open. Reply here with what you need and we'll be ready.\"\n} }];"
    }
   },
   {
-   "id": "0007488e-fb66-4a8d-b41e-d6f5ef2d82d4",
+   "id": "edd44023-e3e5-4a1e-8b9d-c7520a0c6f0b",
    "name": "Was it missed?",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -55,16 +55,95 @@
     0
    ],
    "parameters": {
-    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst b = $('Twilio call status').first().json.body || {};\nconst st = String(b.CallStatus || b.DialCallStatus || '').toLowerCase();\nif (!['no-answer','busy','failed','canceled'].includes(st) || !b.From) return [];\nreturn [{ json: { caller: b.From, status: st, text: fill(C.text, { business: C.business }) } }];"
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst b = $('Twilio call status').first().json.body || {};\nconst st = String(b.CallStatus || b.DialCallStatus || '').toLowerCase();\nif (!['no-answer','busy','failed','canceled'].includes(st) || !b.From) return [];\nreturn [{ json: { caller: String(b.From), status: st } }];"
    }
   },
   {
-   "id": "f487b47c-bc8b-4e95-bd67-8d3c24f0db5a",
+   "id": "0f004260-ccb7-4199-9de0-159edd5ccd15",
+   "name": "Recent calls",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    720,
+    0
+   ],
+   "parameters": {
+    "options": {},
+    "resource": "sheet",
+    "operation": "read",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Calls"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "alwaysOutputData": true,
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": "Google Sheets account"
+    }
+   }
+  },
+  {
+   "id": "cfc603ff-806a-4505-9554-b43e829a31d5",
+   "name": "Decide",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    960,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst m = $('Was it missed?').first().json;\nconst now = new Date();\nconst digits = s => String(s || '').replace(/\\D/g, '').slice(-10);\n// 1) Repeat call: same caller texted within dedupeMinutes -> no second text\nconst windowMs = Number(C.dedupeMinutes || 30) * 6e4;\nconst dup = $input.all().map(i => i.json).some(r => { const t = parse(r['Time']);\n  return digits(r['Caller']) === digits(m.caller) && String(r['Text sent']) === 'Yes' && t && (Date.now() - t) < windowMs; });\n// 2) Business time in the business's own timezone\nconst parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: C.timezone || 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' })\n  .formatToParts(now).map(p => [p.type, p.value]));\nconst hour = Number(parts.hour), day = parts.weekday;\nconst open = String(C.openDays || '').split(',').map(x => x.trim()).includes(day) && hour >= Number(C.openHour) && hour < Number(C.closeHour);\nconst qs = Number(C.quietStart), qe = Number(C.quietEnd);\nconst quiet = qs > qe ? (hour >= qs || hour < qe) : (hour >= qs && hour < qe);\nlet send = true, text = fill(C.text, { business: C.business }), note = 'Open hours';\nif (dup) { send = false; note = 'Repeat call within ' + (C.dedupeMinutes || 30) + ' min - no second text'; }\nelse if (quiet) { send = false; note = 'Quiet hours - no text sent; call back when you open'; }\nelse if (!open) { text = fill(C.afterHoursText, { business: C.business }); note = 'After hours - closed message sent'; }\nreturn [{ json: { ...m, send, text, note } }];"
+   }
+  },
+  {
+   "id": "fc1827d9-a012-44b3-a552-18172c47b636",
+   "name": "Send text?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1200,
+    0
+   ],
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "7d1ee3b4-6526-4563-a043-c97230965638",
+       "leftValue": "={{ $json.send }}",
+       "rightValue": true,
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   }
+  },
+  {
+   "id": "c94bdd20-385d-4048-8cc1-5a19ecd455d1",
    "name": "Text the caller",
    "type": "n8n-nodes-base.twilio",
    "typeVersion": 1,
    "position": [
-    720,
+    1440,
     0
    ],
    "parameters": {
@@ -76,30 +155,30 @@
    "credentials": {
     "twilioApi": {
      "id": "",
-     "name": ""
+     "name": "Twilio account"
     }
    }
   },
   {
-   "id": "8f42dba1-a3ac-48c7-a2fe-290e3d9a6c78",
+   "id": "6ed2dcae-adbf-404c-9b93-139ab81ac618",
    "name": "Row",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    960,
+    1680,
     0
    ],
    "parameters": {
-    "jsCode": "const m = $('Was it missed?').first().json;\nreturn [{ json: { 'Time': new Date().toISOString().slice(0,16).replace('T',' '), 'Caller': m.caller, 'Status': m.status, 'Text sent': 'Yes', 'Notes': '' } }];"
+    "jsCode": "const d = $('Decide').first().json;\nreturn [{ json: { 'Time': new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0,16).replace('T',' '), 'Caller': d.caller, 'Status': d.status, 'Text sent': d.send ? 'Yes' : 'No', 'Notes': d.note } }];"
    }
   },
   {
-   "id": "c7f0c1f6-63dc-4ff4-bb42-d0de6f52c4b6",
+   "id": "7c397c7b-1c2e-446c-9f44-7c5960e910c8",
    "name": "Log call",
    "type": "n8n-nodes-base.googleSheets",
    "typeVersion": 4.7,
    "position": [
-    1200,
+    1920,
     0
    ],
    "parameters": {
@@ -128,7 +207,7 @@
    "credentials": {
     "googleSheetsOAuth2Api": {
      "id": "",
-     "name": ""
+     "name": "Google Sheets account"
     }
    }
   }
@@ -160,7 +239,47 @@
    "main": [
     [
      {
+      "node": "Recent calls",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Recent calls": {
+   "main": [
+    [
+     {
+      "node": "Decide",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Decide": {
+   "main": [
+    [
+     {
+      "node": "Send text?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Send text?": {
+   "main": [
+    [
+     {
       "node": "Text the caller",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Row",
       "type": "main",
       "index": 0
      }
