@@ -11,6 +11,7 @@ Free, tested n8n workflows for contractors, property managers and agencies, buil
 | [Overdue Invoice Reminder Sequence](workflows/invoice-reminders.json) | Friendly → firm → final reminders at 3, 10 and 20 days overdue, logged in your sheet. Get paid faster without awkward calls. | [starter sheet](https://docs.google.com/spreadsheets/d/1uQ7lc2KeayZCNimM6FyrFF_uU-Za8vXoW8IF2qWijk8/copy) |
 | [Payment Received → Thank-You Receipt](workflows/payment-receipts.json) | When an invoice is marked paid, the customer instantly gets a clean thank-you receipt by email — professional, automatic, logged. | [starter sheet](https://docs.google.com/spreadsheets/d/1p9MW8KeWAGQ6RTYavvfaQ4wuN4gTKFsbM630AcECs5I/copy) |
 | [Referral Request Sequence](workflows/referral-asks.json) | Two weeks after a happy job, customers get a friendly referral ask with your offer — word-of-mouth on autopilot. | [starter sheet](https://docs.google.com/spreadsheets/d/1av8K9wh6-7R9pUVXgxdSMkAjv6X0Yaeh472QfzPZGZU/copy) |
+| [Vendor Work Order Dispatch & Follow-Up](workflows/vendor-dispatch.json) | Assign a vendor and they get a clean work order by email; no confirmation in 24 h → up to 2 polite follow-ups, then you're alerted. | [starter sheet](https://docs.google.com/spreadsheets/d/1KuvWKOBgLaW4cPLU-k51emicWEKGk-czp2tgpujuc9c/copy) |
 
 ### How to use
 1. In n8n: **Workflows → Import from file** → pick the `.json`.
@@ -49,6 +50,10 @@ The full library has 30 workflows (AI booking intake, vendor dispatch with follo
 - AI Lead Qualifier & Hot-Lead Alert
 
 Full library, setup guides and done-for-you installation: **https://payhip.com/ClearlineSheets90**
+
+- Don't want to set it up yourself? **Template Setup, $249**: https://payhip.com/b/TDyEN
+- Not sure what to automate first? **Automation Audit, $297** (credited toward setup): https://payhip.com/b/TdWmA
+- Agencies: **White-label license for all 30 workflows**: https://payhip.com/b/Ac9Vp
 
 ## Feedback
 Found a bug or want a workflow for your trade? Open an issue - every report improves the next version.
