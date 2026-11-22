@@ -1,0 +1,255 @@
+{
+ "name": "Vendor Work Order Dispatch & Follow-Up",
+ "nodes": [
+  {
+   "id": "19301c0f-a348-48c2-bf0b-e23c6cf8447d",
+   "name": "Setup notes",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -420,
+    -260
+   ],
+   "parameters": {
+    "content": "## Vendor Dispatch & Follow-Up\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Google Sheets, Gmail.\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets",
+    "height": 420,
+    "width": 380
+   }
+  },
+  {
+   "id": "87da39a7-740a-4f13-9fe2-21fdfbd9e06a",
+   "name": "Schedule",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "0 * * * *"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "4e31cfda-0f04-4030-952c-31cbd13c8223",
+   "name": "Config",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    240,
+    0
+   ],
+   "parameters": {
+    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"company\": \"Your Property Management\",\n  \"managerEmail\": \"manager@yourpm.com\",\n  \"fromName\": \"Your Name\",\n  \"followUpHours\": 24,\n  \"maxFollowUps\": 2\n} }];"
+   }
+  },
+  {
+   "id": "c7f2e8e9-c7ab-4879-ae5e-f9f699fe06e8",
+   "name": "Read Maintenance",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    480,
+    0
+   ],
+   "parameters": {
+    "options": {},
+    "resource": "sheet",
+    "operation": "read",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Maintenance"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": "Google Sheets account"
+    }
+   }
+  },
+  {
+   "id": "c9d4b2a2-f7e6-40c4-a1ff-2b3e9ed3ec79",
+   "name": "Dispatch or chase",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    720,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst out = [];\nfor (const it of $input.all()) { const r = it.json; if (!r['Vendor email'] || /^(yes|y|true|confirmed)$/i.test(String(r['Vendor confirmed']||''))) continue;\n  const st = String(r['Status']||'').toLowerCase(); const wo = `Ticket ${r['Ticket']} - ${r['Unit']}`;\n  if (st === 'assigned' && !r['Dispatched']) { out.push({ json: { row_number: r.row_number, kind: 'dispatch', to: r['Vendor email'],\n    subject: `Work order: ${wo} (${r['Priority'] || 'routine'})`,\n    body: `Hello ${r['Vendor'] || ''},\\n\\nPlease handle this work order:\\n\\nTicket: ${r['Ticket']}\\nUnit: ${r['Unit']}\\nPriority: ${r['Priority'] || 'routine'}\\nIssue: ${r['Request']}\\n\\nPlease reply to confirm and share your earliest date.\\n\\n${C.fromName}\\n${C.company}`, n: 0 } }); continue; }\n  const sent = parse(r['Dispatched']); const n = num(r['Follow-ups']);\n  if (sent && (Date.now() - sent) / 36e5 >= C.followUpHours * (n + 1)) {\n    if (n < C.maxFollowUps) out.push({ json: { row_number: r.row_number, kind: 'chase', to: r['Vendor email'], subject: `Following up: ${wo}`,\n      body: `Hello ${r['Vendor'] || ''},\\n\\nFollowing up on work order ${r['Ticket']} (${r['Unit']}): ${r['Request']}.\\nCan you confirm a date today?\\n\\n${C.fromName}`, n: n + 1 } });\n    else if (n === C.maxFollowUps) out.push({ json: { row_number: r.row_number, kind: 'escalate', to: C.managerEmail, subject: `Vendor not responding: ${wo}`,\n      body: `${r['Vendor']} has not confirmed ticket ${r['Ticket']} (${r['Unit']}) after ${n} follow-ups. Consider reassigning.\\nIssue: ${r['Request']}`, n: n + 1 } });\n  }\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "702d55e1-95b5-4587-aece-fcdf29510575",
+   "name": "Send",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.1,
+   "position": [
+    960,
+    0
+   ],
+   "parameters": {
+    "sendTo": "={{ $json.to }}",
+    "subject": "={{ $json.subject }}",
+    "message": "={{ $json.body }}",
+    "options": {
+     "appendAttribution": false
+    },
+    "resource": "message",
+    "emailType": "text",
+    "operation": "send"
+   },
+   "credentials": {
+    "gmailOAuth2": {
+     "id": "",
+     "name": "Gmail account"
+    }
+   }
+  },
+  {
+   "id": "890774a4-8196-4b94-afa8-91089d773649",
+   "name": "Record",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1200,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const p = $('Dispatch or chase').item.json; const now = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0,16).replace('T',' ');\nreturn { json: p.kind === 'dispatch' ? { row_number: p.row_number, 'Dispatched': now, 'Status': 'Dispatched', 'Follow-ups': 0 } : { row_number: p.row_number, 'Follow-ups': p.n } };",
+    "mode": "runOnceForEachItem"
+   }
+  },
+  {
+   "id": "cab05bad-3cf4-4a4e-bbce-32fea5a9c8ce",
+   "name": "Update Maintenance",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.7,
+   "position": [
+    1440,
+    0
+   ],
+   "parameters": {
+    "columns": {
+     "value": {},
+     "schema": [],
+     "mappingMode": "autoMapInputData",
+     "matchingColumns": [
+      "row_number"
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": false
+    },
+    "options": {},
+    "resource": "sheet",
+    "operation": "update",
+    "sheetName": {
+     "__rl": true,
+     "mode": "name",
+     "value": "Maintenance"
+    },
+    "documentId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.sheetId }}"
+    }
+   },
+   "credentials": {
+    "googleSheetsOAuth2Api": {
+     "id": "",
+     "name": "Google Sheets account"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Schedule": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Read Maintenance",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Read Maintenance": {
+   "main": [
+    [
+     {
+      "node": "Dispatch or chase",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Dispatch or chase": {
+   "main": [
+    [
+     {
+      "node": "Send",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Send": {
+   "main": [
+    [
+     {
+      "node": "Record",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Record": {
+   "main": [
+    [
+     {
+      "node": "Update Maintenance",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "pinData": {},
+ "meta": {
+  "templateCredsSetupCompleted": false
+ },
+ "tags": []
+}
