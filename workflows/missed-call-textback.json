@@ -2,7 +2,7 @@
  "name": "Missed Call Text-Back",
  "nodes": [
   {
-   "id": "f8f3bf91-417b-4a2f-b383-cb7bdab26e55",
+   "id": "8d105e56-9fd3-4adc-a400-c356c92318c3",
    "name": "Setup notes",
    "type": "n8n-nodes-base.stickyNote",
    "typeVersion": 1,
@@ -11,13 +11,13 @@
     -260
    ],
    "parameters": {
-    "content": "## Missed Call Text-Back\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Twilio, Google Sheets.\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets\n\nIn Twilio > Phone Numbers > your number > Voice: set the **Call status changes** URL to the **Twilio call status** webhook URL (POST).\n\nSet your timezone, open days/hours and quiet hours in **Config**. Repeat calls within `dedupeMinutes` get no second text.",
+    "content": "## Missed Call Text-Back (v3)\n\n**Setup (10 min)**\n1. Make a copy of the starter Google Sheet (link in your PDF).\n2. Open **Config** and paste your Sheet ID + business details.\n3. Connect credentials: Twilio, Google Sheets.\n4. Click *Test workflow*, then **Activate**.\n\nBuilt by Clearline Sheets\n\n**Connect Twilio (pick one)**\n- Calls ring only on your Twilio number: Phone Numbers > your number > Voice > **Call status changes** = the **Twilio call status** webhook URL (POST).\n- Calls forward to your cell with `<Dial>`: put the webhook URL in the Dial **action** (POST), e.g. `<Response><Dial timeout=\"18\" action=\"WEBHOOK_URL\"><Number>+1YOURCELL</Number></Dial></Response>`. Keep `timeout` shorter than your cell's voicemail delay; if voicemail still answers, add `machineDetection=\"Enable\"` and it counts as missed. The webhook answers with an empty TwiML `<Response/>`, so Twilio ends the call cleanly.\n\nSet your timezone, open days/hours and quiet hours in **Config** (open hours always win over quiet hours). Repeat calls within `dedupeMinutes` get no second text. Blocked/anonymous numbers can't receive texts: they are logged with a call-back note.\n\nEmergency trade? Put your on-call number in `emergencyLine`: after-hours texts then include it (also at night).\n\nOptional add-on (not included, ~$0.008/call): Twilio Lookup Line Type to skip landline callers, whose texts never arrive.\n\nv3 (2026-11-24): tested against 15 real-world call cases; fixed forwarded-call status, voicemail answer, blocked caller ID, open vs quiet hours; optional emergency line.",
     "height": 420,
     "width": 380
    }
   },
   {
-   "id": "1c7c454c-e80b-4ef7-9ce5-e6a40e0c9aab",
+   "id": "e5e47ebe-a10f-48e8-9be4-57bf38da8675",
    "name": "Twilio call status",
    "type": "n8n-nodes-base.webhook",
    "typeVersion": 2,
@@ -27,13 +27,24 @@
    ],
    "parameters": {
     "path": "missed-call",
-    "options": {},
     "httpMethod": "POST",
-    "responseMode": "onReceived"
-   }
+    "responseMode": "onReceived",
+    "options": {
+     "responseData": "<Response></Response>",
+     "responseHeaders": {
+      "entries": [
+       {
+        "name": "Content-Type",
+        "value": "text/xml"
+       }
+      ]
+     }
+    }
+   },
+   "webhookId": "60fdef46-e9e0-45a4-bb6e-d9cf4bdccb4c"
   },
   {
-   "id": "5bd92a8f-7393-4ae4-8846-7d4057abcd22",
+   "id": "2257d81a-e402-451a-92e6-099becad99b8",
    "name": "Config",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -42,11 +53,11 @@
     0
    ],
    "parameters": {
-    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"business\": \"Your Business\",\n  \"twilioNumber\": \"YOUR_TWILIO_NUMBER\",\n  \"timezone\": \"America/New_York\",\n  \"openDays\": \"Mon,Tue,Wed,Thu,Fri,Sat\",\n  \"openHour\": 7,\n  \"closeHour\": 18,\n  \"quietStart\": 21,\n  \"quietEnd\": 8,\n  \"dedupeMinutes\": 30,\n  \"text\": \"Hi, this is {business}. Sorry we missed your call! How can we help? Reply here and we'll get right back to you.\",\n  \"afterHoursText\": \"Hi, this is {business}. Thanks for calling! We're closed right now, but we'll call you back first thing when we open. Reply here with what you need and we'll be ready.\"\n} }];"
+    "jsCode": "// EDIT THESE VALUES ONCE, then activate the workflow\nreturn [{ json: {\n  \"sheetId\": \"PASTE_SHEET_ID\",\n  \"business\": \"Your Business\",\n  \"twilioNumber\": \"YOUR_TWILIO_NUMBER\",\n  \"timezone\": \"America/New_York\",\n  \"openDays\": \"Mon,Tue,Wed,Thu,Fri,Sat\",\n  \"openHour\": 7,\n  \"closeHour\": 18,\n  \"quietStart\": 21,\n  \"quietEnd\": 8,\n  \"dedupeMinutes\": 30,\n  \"emergencyLine\": \"\",\n  \"text\": \"Hi, this is {business}. Sorry we missed your call! How can we help? Reply here and we'll get right back to you.\",\n  \"afterHoursText\": \"Hi, this is {business}. Thanks for calling! We're closed right now, but we'll call you back first thing when we open. Reply here with what you need and we'll be ready.\",\n  \"emergencyText\": \"Emergency? Call our on-call line now: {emergencyLine}\"\n} }];"
    }
   },
   {
-   "id": "edd44023-e3e5-4a1e-8b9d-c7520a0c6f0b",
+   "id": "6b4cc161-5b15-40ec-904f-448ceda44770",
    "name": "Was it missed?",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -55,11 +66,11 @@
     0
    ],
    "parameters": {
-    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst b = $('Twilio call status').first().json.body || {};\nconst st = String(b.CallStatus || b.DialCallStatus || '').toLowerCase();\nif (!['no-answer','busy','failed','canceled'].includes(st) || !b.From) return [];\nreturn [{ json: { caller: String(b.From), status: st } }];"
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst b = $('Twilio call status').first().json.body || {};\n// Forwarded calls (<Dial>): the forwarded leg's result is in DialCallStatus; CallStatus is then just 'in-progress'\nconst st = String(b.DialCallStatus || b.CallStatus || '').toLowerCase();\n// Voicemail picked up the forwarded call (Answering Machine Detection) -> still a missed call\nconst machine = String(b.AnsweredBy || '').toLowerCase().startsWith('machine');\nif ((!['no-answer','busy','failed','canceled'].includes(st) && !machine) || !b.From) return [];\n// Blocked / anonymous caller ID (Twilio sends e.g. +266696687 = 'ANONYMOUS' on a keypad): no number to text\nconst raw = String(b.From), dg = raw.replace(/\\D/g, '');\nconst blocked = /anonymous|restricted|private|unknown|unavailable|blocked/i.test(raw) || dg.length < 7 ||\n  ['266696687','7378742833','7748283','8656696','86282452253','2562533'].includes(dg);\nreturn [{ json: { caller: raw, status: machine ? 'voicemail' : st, blocked } }];"
    }
   },
   {
-   "id": "0f004260-ccb7-4199-9de0-159edd5ccd15",
+   "id": "36ede3e3-dd28-4f09-b75e-5c64aaeb7bdd",
    "name": "Recent calls",
    "type": "n8n-nodes-base.googleSheets",
    "typeVersion": 4.7,
@@ -91,7 +102,7 @@
    }
   },
   {
-   "id": "cfc603ff-806a-4505-9554-b43e829a31d5",
+   "id": "a05d06eb-c2a1-4b11-8b45-ff9c85aa3d82",
    "name": "Decide",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -100,11 +111,11 @@
     0
    ],
    "parameters": {
-    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst m = $('Was it missed?').first().json;\nconst now = new Date();\nconst digits = s => String(s || '').replace(/\\D/g, '').slice(-10);\n// 1) Repeat call: same caller texted within dedupeMinutes -> no second text\nconst windowMs = Number(C.dedupeMinutes || 30) * 6e4;\nconst dup = $input.all().map(i => i.json).some(r => { const t = parse(r['Time']);\n  return digits(r['Caller']) === digits(m.caller) && String(r['Text sent']) === 'Yes' && t && (Date.now() - t) < windowMs; });\n// 2) Business time in the business's own timezone\nconst parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: C.timezone || 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' })\n  .formatToParts(now).map(p => [p.type, p.value]));\nconst hour = Number(parts.hour), day = parts.weekday;\nconst open = String(C.openDays || '').split(',').map(x => x.trim()).includes(day) && hour >= Number(C.openHour) && hour < Number(C.closeHour);\nconst qs = Number(C.quietStart), qe = Number(C.quietEnd);\nconst quiet = qs > qe ? (hour >= qs || hour < qe) : (hour >= qs && hour < qe);\nlet send = true, text = fill(C.text, { business: C.business }), note = 'Open hours';\nif (dup) { send = false; note = 'Repeat call within ' + (C.dedupeMinutes || 30) + ' min - no second text'; }\nelse if (quiet) { send = false; note = 'Quiet hours - no text sent; call back when you open'; }\nelse if (!open) { text = fill(C.afterHoursText, { business: C.business }); note = 'After hours - closed message sent'; }\nreturn [{ json: { ...m, send, text, note } }];"
+    "jsCode": "const C = $('Config').first().json;\nconst today = new Date(); today.setHours(0,0,0,0);\nconst iso = d => d.toISOString().slice(0,10);\nconst parse = v => { if (!v && v !== 0) return null; if (typeof v === 'number') { const d = new Date(Date.UTC(1899,11,30) + v*864e5); return isNaN(d) ? null : d; } const d = new Date(v); return isNaN(d) ? null : d; };\nconst num = v => { const n = Number(String(v ?? '').replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : n; };\nconst days = (a, b) => Math.floor((b - a) / 864e5);\nconst fill = (t, o) => t.replace(/\\{(\\w+)\\}/g, (_, k) => (o[k] ?? ''));\n\nconst m = $('Was it missed?').first().json;\nconst now = new Date();\nconst digits = s => String(s || '').replace(/\\D/g, '').slice(-10);\n// 1) Repeat call: same caller texted within dedupeMinutes -> no second text\nconst windowMs = Number(C.dedupeMinutes || 30) * 6e4;\nconst dup = $input.all().map(i => i.json).some(r => { const t = parse(r['Time']);\n  return digits(r['Caller']) === digits(m.caller) && String(r['Text sent']) === 'Yes' && t && (Date.now() - t) < windowMs; });\n// 2) Business time in the business's own timezone\nconst parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: C.timezone || 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' })\n  .formatToParts(now).map(p => [p.type, p.value]));\nconst hour = Number(parts.hour), day = parts.weekday;\nconst open = String(C.openDays || '').split(',').map(x => x.trim()).includes(day) && hour >= Number(C.openHour) && hour < Number(C.closeHour);\nconst qs = Number(C.quietStart), qe = Number(C.quietEnd);\nconst em = String(C.emergencyLine || '').trim();\n// Quiet hours never apply during open hours, and are skipped when an emergency line is set\nconst quiet = !open && !em && (qs > qe ? (hour >= qs || hour < qe) : (hour >= qs && hour < qe));\nlet send = true, text = fill(C.text, { business: C.business }), note = 'Open hours';\nif (m.blocked) { send = false; note = 'Blocked caller ID - cannot text; call back if they left a voicemail'; }\nelse if (dup) { send = false; note = 'Repeat call within ' + (C.dedupeMinutes || 30) + ' min - no second text'; }\nelse if (open) { /* open hours always win */ }\nelse if (quiet) { send = false; note = 'Quiet hours - no text sent; call back when you open'; }\nelse if (em) { text = fill(C.afterHoursText, { business: C.business }) + ' ' + fill(C.emergencyText || 'Emergency? Call our on-call line now: {emergencyLine}', { business: C.business, emergencyLine: em }); note = 'After hours - closed message + emergency line sent'; }\nelse { text = fill(C.afterHoursText, { business: C.business }); note = 'After hours - closed message sent'; }\nreturn [{ json: { ...m, send, text, note } }];"
    }
   },
   {
-   "id": "fc1827d9-a012-44b3-a552-18172c47b636",
+   "id": "96a0108c-006a-4f4a-a824-b2ba27b210b0",
    "name": "Send text?",
    "type": "n8n-nodes-base.if",
    "typeVersion": 2.2,
@@ -122,7 +133,7 @@
      },
      "conditions": [
       {
-       "id": "7d1ee3b4-6526-4563-a043-c97230965638",
+       "id": "0b43f030-067a-4b23-b525-23e481e198d2",
        "leftValue": "={{ $json.send }}",
        "rightValue": true,
        "operator": {
@@ -138,7 +149,7 @@
    }
   },
   {
-   "id": "c94bdd20-385d-4048-8cc1-5a19ecd455d1",
+   "id": "031571e6-bbd8-497a-8380-ebdc5be69d70",
    "name": "Text the caller",
    "type": "n8n-nodes-base.twilio",
    "typeVersion": 1,
@@ -160,7 +171,7 @@
    }
   },
   {
-   "id": "6ed2dcae-adbf-404c-9b93-139ab81ac618",
+   "id": "00f86c0e-883d-40f6-8f59-d7348817a4ee",
    "name": "Row",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -173,7 +184,7 @@
    }
   },
   {
-   "id": "7c397c7b-1c2e-446c-9f44-7c5960e910c8",
+   "id": "4a82123b-139d-4a48-8497-ed948831db2d",
    "name": "Log call",
    "type": "n8n-nodes-base.googleSheets",
    "typeVersion": 4.7,
